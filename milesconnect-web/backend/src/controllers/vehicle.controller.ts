@@ -62,7 +62,7 @@ export async function listVehicles(req: Request, res: Response, next: NextFuncti
         },
         shipments: {
           where: {
-            status: { in: ["PLANNED", "IN_TRANSIT"] },
+            status: "IN_TRANSIT",
           },
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -73,10 +73,41 @@ export async function listVehicles(req: Request, res: Response, next: NextFuncti
             createdAt: true,
           },
         },
+        tripSheets: {
+          where: {
+            status: "APPROVED",
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+          },
+        },
       },
     });
 
-    res.status(200).json({ data: vehicles });
+    const vehiclesWithStatus = vehicles.map(vehicle => {
+      const activeShipment = vehicle.shipments[0];
+      const activeTrip = vehicle.tripSheets[0];
+      let computedStatus = 'AVAILABLE';
+
+      if (vehicle.status === 'MAINTENANCE') {
+        computedStatus = 'MAINTENANCE';
+      } else if (vehicle.status === 'INACTIVE') {
+        computedStatus = 'INACTIVE';
+      } else if (activeShipment || activeTrip) {
+        computedStatus = 'IN_USE';
+      }
+
+      return {
+        ...vehicle,
+        computedStatus,
+        currentShipment: activeShipment || null
+      };
+    });
+
+    res.status(200).json({ data: vehiclesWithStatus });
   } catch (err) {
     next(err);
   }
@@ -96,15 +127,47 @@ export async function getVehicle(req: Request, res: Response, next: NextFunction
             },
           },
         },
-        shipments: true,
-        tripSheets: true,
+        shipments: {
+          orderBy: { createdAt: 'desc' },
+          take: 5
+        },
+        tripSheets: {
+          orderBy: { createdAt: 'desc' },
+          take: 5
+        },
         documents: true,
       },
     });
 
     if (!vehicle) throw httpError(404, "Vehicle not found", "VEHICLE_NOT_FOUND");
 
-    res.status(200).json({ data: vehicle });
+    // Check for specific active shipment
+    let activeShipment = vehicle.shipments.find(s => s.status === 'IN_TRANSIT');
+
+    if (!activeShipment) {
+      const active = await prisma.shipment.findFirst({
+        where: { vehicleId: id, status: 'IN_TRANSIT' },
+        select: { id: true, status: true, referenceNumber: true }
+      });
+      if (active) activeShipment = active as any;
+    }
+
+    let computedStatus = 'AVAILABLE';
+    if (vehicle.status === 'MAINTENANCE') {
+      computedStatus = 'MAINTENANCE';
+    } else if (vehicle.status === 'INACTIVE') {
+      computedStatus = 'INACTIVE';
+    } else if (activeShipment) {
+      computedStatus = 'IN_USE';
+    }
+
+    res.status(200).json({
+      data: {
+        ...vehicle,
+        computedStatus,
+        currentShipment: activeShipment || null
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -173,8 +236,8 @@ export async function updateVehicle(req: Request, res: Response, next: NextFunct
     // Calculate next maintenance date if cycle or last date is updated
     let nextMaintenanceDate: Date | null | undefined;
     const cycleDays = body.maintenanceCycleDays ?? existing.maintenanceCycleDays;
-    const lastDate = body.lastMaintenanceDate !== undefined 
-      ? body.lastMaintenanceDate 
+    const lastDate = body.lastMaintenanceDate !== undefined
+      ? body.lastMaintenanceDate
       : existing.lastMaintenanceDate;
 
     if (cycleDays && lastDate) {
@@ -228,12 +291,16 @@ export async function deleteVehicle(req: Request, res: Response, next: NextFunct
       where: { id },
     });
 
-    res.status(204).send();
+    res.status(200).json({ success: true, message: "Vehicle deleted successfully" });
   } catch (err: unknown) {
     if (typeof err === "object" && err && "code" in err) {
       const anyErr = err as { code?: string };
       if (anyErr.code === "P2025") {
         next(httpError(404, "Vehicle not found", "VEHICLE_NOT_FOUND"));
+        return;
+      }
+      if (anyErr.code === "P2003") {
+        next(httpError(409, "Cannot delete vehicle: It has active Shipments or Trip Sheets.", "DEPENDENCY_VIOLATION"));
         return;
       }
     }
