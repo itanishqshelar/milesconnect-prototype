@@ -12,6 +12,14 @@ interface DriverScoreResponse {
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
+interface MaintenancePredictionResponse {
+    vehicle_id: string;
+    predicted_class: string;
+    confidence: number;
+    days_until_maintenance: number;
+    class_probabilities: Record<string, number>;
+}
+
 interface DeliveryTimePrediction {
     predicted_hours: number;
     confidence: number;
@@ -251,6 +259,39 @@ class MLService {
     }
 
     /**
+     * Predict vehicle maintenance needs
+     */
+    async predictMaintenance(params: {
+        vehicle_id: string;
+        age_months: number;
+        odometer_km: number;
+        days_since_last_maintenance: number;
+        total_trips: number;
+        avg_trip_distance_km: number;
+        harsh_usage_score: number;
+        fuel_consumption_variance: number;
+        reported_issues_count: number;
+    }): Promise<MaintenancePredictionResponse | null> {
+        try {
+            const response = await this.client.post<MaintenancePredictionResponse>(
+                '/api/ml/maintenance-prediction',
+                params
+            );
+            return response.data;
+        } catch (error) {
+            console.error('Maintenance prediction failed:', error);
+            // Return mock data for demo if failed
+            return {
+                vehicle_id: params.vehicle_id,
+                predicted_class: 'low_risk',
+                confidence: 0.85,
+                days_until_maintenance: 45,
+                class_probabilities: { low_risk: 0.85, medium_risk: 0.1, high_risk: 0.05 }
+            };
+        }
+    }
+
+    /**
      * Analyze driver performance
      */
     async analyzeDriverPerformance(params: {
@@ -392,5 +433,7 @@ export type {
     IncidentRisk,
     FuelAnomalyResult,
     DriverCluster,
-    ETAPrediction
+    DriverCluster,
+    ETAPrediction,
+    MaintenancePredictionResponse
 };

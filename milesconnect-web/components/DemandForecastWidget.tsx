@@ -110,7 +110,7 @@ export function DemandForecastWidget() {
             </div>
 
             <div className="mt-4 space-y-2">
-                {forecast.recommendations.map((rec: string, index: number) => (
+                {(forecast.recommendations || []).map((rec: string, index: number) => (
                     <div
                         key={index}
                         className="flex items-start gap-2 rounded-md bg-slate-50 p-2 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300"

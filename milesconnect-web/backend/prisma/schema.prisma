@@ -472,3 +472,20 @@ model MaintenanceLog {
   @@index([vehicleId])
   @@index([date])
 }
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  action      String   // CREATE, UPDATE, DELETE
+  entityType  String   // User, Driver, Vehicle, etc.
+  entityId    String   // The ID of the record changed
+  
+  changes     String?  // JSON string of what changed (old vs new)
+  performedBy String?  // User ID who performed the action (if available)
+
+  createdAt   DateTime @default(now())
+
+  @@index([entityType])
+  @@index([entityId])
+  @@index([action])
+  @@index([createdAt])
+}

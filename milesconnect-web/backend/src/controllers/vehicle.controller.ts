@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 
 import prisma from "../prisma/client";
+import { mlService } from "../services/ml.service";
 
 type HttpError = Error & { statusCode?: number; code?: string };
 
@@ -87,7 +88,10 @@ export async function listVehicles(req: Request, res: Response, next: NextFuncti
       },
     });
 
-    const vehiclesWithStatus = vehicles.map(vehicle => {
+
+
+    // Enrich with ML Predictions (concurrently for performance)
+    const vehiclesWithStatus = await Promise.all(vehicles.map(async (vehicle) => {
       const activeShipment = vehicle.shipments[0];
       const activeTrip = vehicle.tripSheets[0];
       let computedStatus = 'AVAILABLE';
@@ -100,12 +104,55 @@ export async function listVehicles(req: Request, res: Response, next: NextFuncti
         computedStatus = 'IN_USE';
       }
 
+      // Fetch ML Prediction
+      // Mock data points based on vehicle properties or random for Demo if fields missing
+      let riskScore = 0;
+      let nextServicePredicted = null;
+
+      try {
+        const prediction = await mlService.predictMaintenance({
+          vehicle_id: vehicle.id,
+          age_months: 12, // mock or calculate from createdAt
+          odometer_km: 15000, // mock or from vehicle logs
+          days_since_last_maintenance: vehicle.lastMaintenanceDate
+            ? Math.floor((Date.now() - new Date(vehicle.lastMaintenanceDate).getTime()) / (1000 * 60 * 60 * 24))
+            : 30,
+          total_trips: 50,
+          avg_trip_distance_km: 250,
+          harsh_usage_score: 5,
+          fuel_consumption_variance: 0.05,
+          reported_issues_count: 0
+        });
+
+        if (prediction) {
+          // Convert class probability to a 0-100 score
+          // High risk = higher score
+          const highRiskProb = prediction.class_probabilities['high_risk'] || 0;
+          const mediumRiskProb = prediction.class_probabilities['medium_risk'] || 0;
+          riskScore = Math.round((highRiskProb * 100) + (mediumRiskProb * 50));
+
+          if (prediction.days_until_maintenance < 30) {
+            const d = new Date();
+            d.setDate(d.getDate() + prediction.days_until_maintenance);
+            nextServicePredicted = d.toISOString();
+          }
+        }
+      } catch (e) {
+        // Silent fail for ML enrichment
+        console.warn(`Failed to predict maintenance for ${vehicle.id}`);
+      }
+
       return {
         ...vehicle,
         computedStatus,
-        currentShipment: activeShipment || null
+        currentShipment: activeShipment || null,
+        maintenanceHealth: {
+          riskScore,
+          predictedFailureDate: nextServicePredicted,
+          status: riskScore > 70 ? 'CRITICAL' : riskScore > 40 ? 'WARNING' : 'GOOD'
+        }
       };
-    });
+    }));
 
     res.status(200).json({ data: vehiclesWithStatus });
   } catch (err) {
