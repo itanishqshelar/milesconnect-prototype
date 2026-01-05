@@ -53,7 +53,7 @@ export function MLPredictionCard({
         return null;
     }
 
-    const prediction = predictMutation.data?.data;
+    const prediction = predictMutation.data;
 
     if (!prediction) {
         return null;

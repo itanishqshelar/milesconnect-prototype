@@ -22,7 +22,7 @@ export async function createMaintenanceLog(req: Request, res: Response, next: Ne
             throw httpError(400, "Missing required fields");
         }
 
-        const costCents = cost ? BigInt(Math.round(parseFloat(cost) * 100)) : 0n;
+        const costCents = cost ? BigInt(Math.round(parseFloat(cost) * 100)) : BigInt(0);
 
         // Create Log
         const log = await prisma.maintenanceLog.create({

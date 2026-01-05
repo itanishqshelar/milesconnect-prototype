@@ -703,7 +703,7 @@ export async function createTripSheetsFromShipments(
       const sheetNo = `TS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
       // Calculate total revenue from shipments
-      const totalRevenue = groupShipments.reduce((sum, s) => sum + (s.priceCents || 0n), 0n);
+      const totalRevenue = groupShipments.reduce((sum, s) => sum + (s.priceCents || BigInt(0)), BigInt(0));
 
       const tripSheet = await prisma.tripSheet.create({
         data: {
@@ -773,7 +773,7 @@ export async function settleTripSheet(req: Request, res: Response, next: NextFun
 
     // Calculate Financials (Revenue & Profit)
     // Revenue = Sum of all linked shipment prices
-    const revenue = tripSheet.shipments.reduce((sum, link) => sum + (link.shipment.priceCents || 0n), 0n);
+    const revenue = tripSheet.shipments.reduce((sum, link) => sum + (link.shipment.priceCents || BigInt(0)), BigInt(0));
 
     // Net Profit = Revenue - Expenses (Advance is irrelevant for profit, it's just cashflow)
     const profit = revenue - expenses;

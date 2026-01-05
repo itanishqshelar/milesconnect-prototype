@@ -264,6 +264,240 @@ class SyntheticDataGenerator:
         print(f"✓ Generated {len(df)} demand forecast records → {output_path}")
         return df
     
+    
+    def generate_delay_prediction_data(self, n_samples=1000):
+        """Generate synthetic delay prediction data"""
+        data = []
+        for _ in range(n_samples):
+            distance = np.random.uniform(50, 800)
+            num_stops = np.random.randint(1, 10)
+            traffic_score = np.random.uniform(0, 100)
+            weather_score = np.random.uniform(0, 100)
+            hist_delay = np.random.exponential(15) # Avg 15 min delay history
+            
+            vehicle_age = np.random.randint(1, 15)
+            departure_hour = np.random.randint(0, 24)
+            is_weekend = np.random.choice([0, 1], p=[0.7, 0.3])
+            
+            # Logic to determine delay class
+            risk_score = (
+                (traffic_score / 100) * 0.3 + 
+                (weather_score / 100) * 0.3 + 
+                (num_stops / 10) * 0.2 +
+                (vehicle_age / 15) * 0.1 +
+                (hist_delay / 60) * 0.1
+            )
+            
+            # Adjust risk for rush hours
+            if 7 <= departure_hour <= 9 or 16 <= departure_hour <= 19:
+                risk_score += 0.2
+            
+            if risk_score > 0.6:
+                delay_class = "major_delay"
+            elif risk_score > 0.3:
+                delay_class = "minor_delay"
+            else:
+                delay_class = "on_time"
+                
+            data.append({
+                'total_distance_km': round(distance, 2),
+                'num_stops': num_stops,
+                'traffic_density_score': round(traffic_score, 2),
+                'weather_severity_score': round(weather_score, 2),
+                'historical_route_avg_delay_mins': round(hist_delay, 2),
+                'departure_hour': departure_hour,
+                'is_weekend': is_weekend,
+                'vehicle_age_years': vehicle_age,
+                'delay_class': delay_class
+            })
+            
+        df = pd.DataFrame(data)
+        output_path = self.output_dir / "delay_prediction.csv"
+        df.to_csv(output_path, index=False)
+        print(f"✓ Generated {len(df)} delay prediction records → {output_path}")
+        return df
+
+    def generate_incident_risk_data(self, n_samples=1000):
+        """Generate synthetic incident risk data"""
+        data = []
+        for _ in range(n_samples):
+            weather = np.random.uniform(0, 100) # 0=clear, 100=storm
+            traffic = np.random.uniform(0, 100)
+            road_quality = np.random.uniform(0, 100) # 0=poor, 100=good
+            fatigue = np.random.uniform(0, 10) # hours driven
+            vehicle_maint = np.random.uniform(0, 100) # 0=poor, 100=perfect
+            hist_accident = np.random.uniform(0, 0.05) # rate per km
+            
+            time_of_day_risk = np.random.uniform(0, 1)
+            
+            # Risk formula
+            risk = (
+                (weather / 100) * 20 +
+                (traffic / 100) * 15 +
+                ((100 - road_quality) / 100) * 15 +
+                (fatigue / 10) * 20 +
+                ((100 - vehicle_maint) / 100) * 15 +
+                (hist_accident * 100) * 10 +
+                time_of_day_risk * 5
+            )
+            risk = np.clip(risk + np.random.normal(0, 5), 0, 100)
+            
+            data.append({
+                'weather_condition_score': round(weather, 2),
+                'traffic_density': round(traffic, 2),
+                'road_quality_score': round(road_quality, 2),
+                'driver_fatigue_score': round(fatigue, 2),
+                'vehicle_maintenance_score': round(vehicle_maint, 2),
+                'route_historical_accident_rate': round(hist_accident, 4),
+                'time_of_day_risk': round(time_of_day_risk, 2),
+                'incident_risk_score': round(risk, 2)
+            })
+            
+        df = pd.DataFrame(data)
+        output_path = self.output_dir / "incident_risk.csv"
+        df.to_csv(output_path, index=False)
+        print(f"✓ Generated {len(df)} incident risk records → {output_path}")
+        return df
+
+    def generate_fuel_anomaly_data(self, n_samples=1000):
+        """Generate fuel consumption data with anomalies"""
+        data = []
+        for _ in range(n_samples):
+            distance = np.random.uniform(50, 500)
+            load = np.random.uniform(0, 10000) # kg
+            speed = np.random.uniform(40, 80)
+            idle = np.random.uniform(10, 120)
+            elevation = np.random.uniform(0, 1000)
+            
+            # Baseline fuel calc (approx)
+            # Base 8km/l -> 0.125 l/km
+            # Load impact: +0.05 l/km per ton
+            # Speed impact: optimal 60, quadratic penalty
+            # Idle: 1L per hour
+            
+            base_rate = 0.125
+            load_factor = (load / 1000) * 0.01
+            speed_factor = ((speed - 60)**2) * 0.0001
+            elevation_factor = (elevation / 100) * 0.005
+            
+            rate = base_rate + load_factor + speed_factor + elevation_factor
+            consumed = (distance * rate) + (idle / 60)
+            
+            # Introduce anomalies (10% chance)
+            is_anomaly = False
+            if np.random.random() < 0.1:
+                is_anomaly = True
+                anomaly_type = np.random.choice(['theft', 'leak', 'inefficient'])
+                if anomaly_type == 'theft':
+                    consumed *= np.random.uniform(1.2, 1.5) # Sudden drop not visible here, but total consumed is high for distance
+                elif anomaly_type == 'leak':
+                    consumed *= np.random.uniform(1.3, 2.0)
+                else:
+                    consumed *= 1.15
+            
+            data.append({
+                'distance_km': round(distance, 2),
+                'fuel_consumed_liters': round(consumed, 2),
+                'load_weight_kg': round(load, 2),
+                'avg_speed_kmh': round(speed, 2),
+                'idle_time_mins': round(idle, 2),
+                'route_elevation_gain_m': round(elevation, 2),
+                'is_anomaly': is_anomaly # Label for verification, unsupervised training won't use it
+            })
+            
+        df = pd.DataFrame(data)
+        output_path = self.output_dir / "fuel_anomaly.csv"
+        df.to_csv(output_path, index=False)
+        print(f"✓ Generated {len(df)} fuel records ({df['is_anomaly'].sum()} anomalies) → {output_path}")
+        return df
+        
+    def generate_driver_clustering_data(self, n_drivers=200):
+        """Generate driver profiling data for clustering"""
+        data = []
+        
+        # Define prototypes
+        profiles = [
+            # Aggressive: Fast, harsh, night driving
+            {'speed': (70, 90), 'harsh': (5, 15), 'idle': (0.05, 0.1), 'night': (0.4, 0.8), 'dist': (200, 400)},
+            # Eco/Cautious: Slow, smooth, low idle
+            {'speed': (40, 60), 'harsh': (0, 3), 'idle': (0.05, 0.2), 'night': (0.0, 0.2), 'dist': (100, 300)},
+            # Long-Haul: Moderate speed, high distance, high night
+            {'speed': (50, 70), 'harsh': (2, 8), 'idle': (0.1, 0.3), 'night': (0.3, 0.6), 'dist': (500, 1000)},
+            # City/balanced: Moderate everything, high idle
+            {'speed': (30, 50), 'harsh': (3, 7), 'idle': (0.3, 0.6), 'night': (0.1, 0.3), 'dist': (50, 150)}
+        ]
+        
+        for _ in range(n_drivers):
+            profile = np.random.choice(profiles)
+            
+            avg_speed = np.random.uniform(*profile['speed'])
+            harsh_acc = np.random.uniform(*profile['harsh'])
+            harsh_brake = np.random.uniform(*profile['harsh'])
+            idle_ratio = np.random.uniform(*profile['idle'])
+            night_ratio = np.random.uniform(*profile['night'])
+            avg_dist = np.random.uniform(*profile['dist'])
+            
+            data.append({
+                'avg_speed_kmh': round(avg_speed, 2),
+                'harsh_acceleration_count_per_100km': round(harsh_acc, 2),
+                'harsh_braking_count_per_100km': round(harsh_brake, 2),
+                'idling_ratio': round(idle_ratio, 3),
+                'night_driving_ratio': round(night_ratio, 3),
+                'average_trip_distance_km': round(avg_dist, 2)
+            })
+            
+        df = pd.DataFrame(data)
+        output_path = self.output_dir / "driver_clustering.csv"
+        df.to_csv(output_path, index=False)
+        print(f"✓ Generated {len(df)} driver profiles → {output_path}")
+        return df
+
+    def generate_eta_data(self, n_samples=1000):
+        """Generate synthetic ETA training data"""
+        data = []
+        for _ in range(n_samples):
+            distance = np.random.uniform(10, 1000)
+            base_speed = 60 # km/h
+            base_duration = (distance / base_speed) * 60 # minutes
+            
+            traffic = np.random.uniform(0, 100)
+            weather = np.random.uniform(1.0, 1.5) # multiplier
+            hour = np.random.randint(0, 24)
+            weekend = np.random.choice([0, 1], p=[0.7, 0.3])
+            urban = np.random.uniform(0, 100)
+            
+            # Rush hour impact
+            rush_hour = 0
+            if (7 <= hour <= 10) or (16 <= hour <= 19):
+                rush_hour = 1
+                
+            # Calculate actual duration
+            # Traffic impact increases with urban density
+            traffic_factor = 1.0 + (traffic / 100) * (urban / 100) * 0.5 
+            rush_factor = 1.0 + (rush_hour * 0.3 * (urban / 100))
+            
+            actual_duration = base_duration * traffic_factor * weather * rush_factor
+            
+            # Add noise
+            actual_duration *= np.random.normal(1.0, 0.05)
+            
+            data.append({
+                'distance_km': round(distance, 2),
+                'base_duration_mins': round(base_duration, 2),
+                'traffic_density_score': round(traffic, 2),
+                'weather_factor': round(weather, 2),
+                'hour_of_day': hour,
+                'is_weekend': weekend,
+                'urban_density_score': round(urban, 2),
+                'actual_duration_mins': round(actual_duration, 2)
+            })
+            
+        df = pd.DataFrame(data)
+        output_path = self.output_dir / "eta_prediction.csv"
+        df.to_csv(output_path, index=False)
+        print(f"✓ Generated {len(df)} ETA records → {output_path}")
+        return df
+
     def generate_all(self):
         """Generate all synthetic datasets"""
         print("\n🔄 Generating synthetic training data...\n")
@@ -272,13 +506,25 @@ class SyntheticDataGenerator:
         maintenance_df = self.generate_maintenance_data(n_vehicles=100)
         demand_df = self.generate_demand_forecast_data(n_days=730)
         
+        # New datasets
+        delay_df = self.generate_delay_prediction_data(n_samples=1000)
+        risk_df = self.generate_incident_risk_data(n_samples=1000)
+        fuel_df = self.generate_fuel_anomaly_data(n_samples=1000)
+        cluster_df = self.generate_driver_clustering_data(n_drivers=200)
+        eta_df = self.generate_eta_data(n_samples=1000)
+        
         print(f"\n✅ All datasets generated successfully!")
         print(f"\nDataset Statistics:")
         print(f"  - Drivers: {len(driver_df)} records")
         print(f"  - Vehicles: {len(maintenance_df)} records")
         print(f"  - Demand History: {len(demand_df)} days")
+        print(f"  - Delay Samples: {len(delay_df)}")
+        print(f"  - Incident Risk Samples: {len(risk_df)}")
+        print(f"  - Fuel Samples: {len(fuel_df)}")
+        print(f"  - Driver Profiles: {len(cluster_df)}")
+        print(f"  - ETA Samples: {len(eta_df)}")
         
-        return driver_df, maintenance_df, demand_df
+        return driver_df, maintenance_df, demand_df, delay_df, risk_df, fuel_df, cluster_df, eta_df
 
 
 if __name__ == "__main__":

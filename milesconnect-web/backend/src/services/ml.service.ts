@@ -1,5 +1,15 @@
 import axios, { AxiosInstance } from 'axios';
 
+interface DriverScoreResponse {
+    score: number;
+    metrics: {
+        on_time_delivery_rate: number;
+        fuel_efficiency_kmpl: number;
+        safety_score: number;
+        customer_rating: number;
+    }
+}
+
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
 interface DeliveryTimePrediction {
@@ -66,6 +76,36 @@ interface AnomalyDetection {
     is_anomalous: boolean;
     risk_score: number;
 }
+
+
+
+// New Interfaces
+interface DelayPrediction {
+    predicted_class: 'on_time' | 'minor_delay' | 'major_delay';
+    confidence: number;
+    probabilities: Record<string, number>;
+}
+
+interface IncidentRisk {
+    risk_score: number;
+}
+
+interface FuelAnomalyResult {
+    is_anomaly: boolean;
+    anomaly_score: number;
+    severity: string;
+}
+
+interface DriverCluster {
+    cluster_id: number;
+    cluster_name: string;
+    centroid_distance: number;
+}
+
+interface ETAPrediction {
+    predicted_duration_mins: number;
+}
+
 
 class MLService {
     private client: AxiosInstance;
@@ -152,10 +192,16 @@ class MLService {
     }): Promise<DemandForecast | null> {
         try {
             const response = await this.client.post<DemandForecast>(
-                '/api/forecast/demand',
+                '/api/ml/demand-forecast', // Updated path
                 {
-                    forecast_days: params.forecast_days || 7,
-                    region: params.region,
+                    day_of_week: new Date().getDay(),
+                    month: new Date().getMonth() + 1,
+                    is_holiday: false, // In production, check calendar
+                    historical_shipments_7d: 50, // Mock history
+                    historical_shipments_30d: 45,
+                    avg_shipment_weight_kg: 500,
+                    active_vehicles_count: 10,
+                    seasonal_index: 1.0
                 }
             );
             return response.data;
@@ -212,14 +258,42 @@ class MLService {
         period_days?: number;
     }): Promise<DriverPerformance | null> {
         try {
-            const response = await this.client.post<DriverPerformance>(
-                '/api/analyze/driver-performance',
-                {
-                    driver_id: params.driver_id,
-                    period_days: params.period_days || 30,
-                }
+            // Mock data collection for ML model
+            const mockDriverData = {
+                driver_id: params.driver_id,
+                total_trips: 100,
+                on_time_deliveries: 85,
+                late_deliveries: 15,
+                avg_speed_kmh: 60,
+                harsh_braking_count: 5,
+                harsh_acceleration_count: 5,
+                idle_time_mins: 120,
+                fuel_efficiency_kmpl: 12,
+                distance_km: 5000,
+                experience_months: 24,
+                incident_count: 0,
+                customer_rating: 4.5
+            };
+
+            const response = await this.client.post<DriverScoreResponse>(
+                '/api/ml/driver-score',
+                mockDriverData
             );
-            return response.data;
+
+            // Map to interface
+            return {
+                driver_id: params.driver_id,
+                overall_score: response.data.score,
+                metrics: {
+                    on_time_rate: response.data.metrics.on_time_delivery_rate,
+                    fuel_efficiency: response.data.metrics.fuel_efficiency_kmpl,
+                    safety_score: response.data.metrics.safety_score,
+                    customer_rating: response.data.metrics.customer_rating,
+                    completion_rate: 98 // derive or mock
+                },
+                ranking: 1, // calculated elsewhere
+                recommendations: ["Maintain good safety record"]
+            };
         } catch (error) {
             console.error('Driver performance analysis failed:', error);
             return null;
@@ -227,7 +301,7 @@ class MLService {
     }
 
     /**
-     * Detect anomalies in entity behavior
+     * Detect anomalies
      */
     async detectAnomalies(params: {
         entity_type: 'shipment' | 'driver' | 'vehicle';
@@ -235,13 +309,69 @@ class MLService {
         check_type: 'delay' | 'fuel' | 'route_deviation' | 'all';
     }): Promise<AnomalyDetection | null> {
         try {
-            const response = await this.client.post<AnomalyDetection>(
-                '/api/detect/anomalies',
-                params
-            );
-            return response.data;
+            // Example for Fuel Anomaly
+            if (params.check_type === 'fuel' || params.check_type === 'all') {
+                const mockFuelData = {
+                    distance_km: 200,
+                    fuel_consumed_liters: 25,
+                    load_weight_kg: 500,
+                    avg_speed_kmh: 60,
+                    idle_time_mins: 30,
+                    route_elevation_gain_m: 100
+                };
+                const response = await this.client.post<FuelAnomalyResult>('/api/ml/fuel-anomaly', mockFuelData);
+
+                if (response.data.is_anomaly) {
+                    return {
+                        anomalies: [{
+                            type: 'Fuel Anomaly',
+                            severity: response.data.severity,
+                            description: `Abnormal fuel consumption detected (Score: ${response.data.anomaly_score.toFixed(2)})`,
+                            detected_at: new Date().toISOString(),
+                            recommended_action: "Check for leaks or theft"
+                        }],
+                        is_anomalous: true,
+                        risk_score: 80
+                    };
+                }
+            }
+
+            return { anomalies: [], is_anomalous: false, risk_score: 0 };
+
         } catch (error) {
             console.error('Anomaly detection failed:', error);
+            return null;
+        }
+    }
+
+    // New API Methods
+
+    async predictDelay(data: any): Promise<DelayPrediction | null> {
+        try {
+            const response = await this.client.post<DelayPrediction>('/api/ml/predict-delay', data);
+            return response.data;
+        } catch (error) {
+            console.error('Delay prediction failed', error);
+            return null;
+        }
+    }
+
+    async predictIncidentRisk(data: any): Promise<number | null> {
+        try {
+            const response = await this.client.post<IncidentRisk>('/api/ml/incident-risk', data);
+            return response.data.risk_score;
+        } catch (error) {
+            console.error('Incident risk prediction failed', error);
+            return null;
+        }
+    }
+
+    async predictETA(data: any): Promise<number | null> {
+        try {
+            const response = await this.client.post<ETAPrediction>('/api/ml/predict-eta', data);
+            return response.data.predicted_duration_mins;
+        } catch (error) {
+            console.error('ETA prediction failed', error);
             return null;
         }
     }
@@ -258,4 +388,9 @@ export type {
     DriverPerformance,
     Anomaly,
     AnomalyDetection,
+    DelayPrediction,
+    IncidentRisk,
+    FuelAnomalyResult,
+    DriverCluster,
+    ETAPrediction
 };

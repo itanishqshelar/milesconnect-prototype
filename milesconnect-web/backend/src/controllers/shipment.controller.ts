@@ -231,7 +231,7 @@ export const createShipment = async (req: Request, res: Response) => {
         createdById,
         driverId: driverId || null,
         vehicleId: vehicleId || null,
-        priceCents: price ? BigInt(Math.round(parseFloat(price) * 100)) : 0n,
+        priceCents: price ? BigInt(Math.round(parseFloat(price) * 100)) : BigInt(0),
       },
       include: {
         driver: {
@@ -385,7 +385,7 @@ export const updateShipmentStatus = async (req: Request, res: Response) => {
       if (scheduledPickupAt !== undefined) updateData.scheduledPickupAt = scheduledPickupAt ? new Date(scheduledPickupAt) : null;
       if (scheduledDropAt !== undefined) updateData.scheduledDropAt = scheduledDropAt ? new Date(scheduledDropAt) : null;
       if (weightKg !== undefined) updateData.weightKg = weightKg ? parseInt(weightKg) : null;
-      if (price !== undefined) updateData.priceCents = price ? BigInt(Math.round(parseFloat(price) * 100)) : 0n;
+      if (price !== undefined) updateData.priceCents = price ? BigInt(Math.round(parseFloat(price) * 100)) : BigInt(0);
 
       // 4. Exec Update
       const updatedShipment = await tx.shipment.update({

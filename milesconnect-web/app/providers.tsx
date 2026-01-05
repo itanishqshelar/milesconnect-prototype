@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from "@ta
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { LogisticsProvider } from "../lib/context/LogisticsProvider";
+import { NotificationProvider } from "../lib/context/NotificationProvider";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { Toaster, toast } from "sonner";
 
@@ -39,8 +40,10 @@ export default function Providers({ children }: { children: ReactNode }) {
 				disableTransitionOnChange
 			>
 				<LogisticsProvider>
-					{children}
-					<Toaster richColors position="top-right" />
+					<NotificationProvider>
+						{children}
+						<Toaster richColors position="top-right" />
+					</NotificationProvider>
 				</LogisticsProvider>
 			</ThemeProvider>
 		</QueryClientProvider>
