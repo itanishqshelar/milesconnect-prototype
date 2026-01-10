@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { ShipmentStatus } from '@/lib/types/database'
+import { sendDocument } from '../whapi'
 
 function generateShipmentNumber(): string {
   const now = new Date()
@@ -215,4 +216,17 @@ export async function deleteShipment(shipmentId: string) {
   revalidatePath('/vehicles')
 
   return { success: true }
+}
+
+export async function sendShipmentInvoice(shipmentId: string, customerNumber: string) {
+  const invoiceUrl = 'https://www.irs.gov/pub/irs-pdf/f1040.pdf' // Replace with dynamic URL
+  const filename = 'Test_Invoice.pdf'
+  const caption = 'Hello, here is your test invoice'
+
+  try {
+    await sendDocument(customerNumber, invoiceUrl, filename, caption)
+    console.log(`Invoice sent for shipment ${shipmentId}`)
+  } catch (error) {
+    console.error(`Failed to send invoice for shipment ${shipmentId}:`, error)
+  }
 }
